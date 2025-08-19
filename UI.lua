@@ -1,7 +1,7 @@
--- miniui.lua  •  mobile-first UI lib (tabs/sections/scroll/toggles/sliders/dropdowns)
--- Improved version with better mobile support, corner labels, and open/close functionality
+-- bronx.lol UI
+-- Improved version with better organization, mobile support, and requested features
 
-local MiniUI = {}
+local BronxUI = {}
 
 -- ========= THEME =========
 local THEME = {
@@ -36,57 +36,443 @@ local function text(parent, str, size, bold, color, center)
     })
 end
 
--- Responsive scale (keeps window readable on phones)
+-- Responsive scale for mobile
 local function autoScale(frame)
     local scale = Instance.new("UIScale"); scale.Parent = frame
     local function rescale()
-        local w = frame.AbsoluteSize.X > 0 and frame.AbsoluteSize.X or frame.Parent.AbsoluteSize.X
-        -- target 620px design width => compute factor from viewport width
         local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize.X or 800
-        local s = math.clamp(vp / 1000, 0.65, 1) -- 0.65x on small phones, up to 1x on desktop
+        local s = math.clamp(vp / 1000, 0.65, 1)
         scale.Scale = s
     end
     rescale()
     game:GetService("RunService").RenderStepped:Connect(rescale)
 end
 
--- ========= ROOT / WINDOW =========
-function MiniUI:CreateWindow(opts)
-    opts = opts or {}
-    local title = opts.title or "MiniUI Window"
-    local sizeW, sizeH = opts.width or 640, opts.height or 560
-
-    local gui = mk("ScreenGui", {
-        Name = opts.name or "MiniUI", 
-        ResetOnSpawn=false, 
-        IgnoreGuiInset=true,
-        DisplayOrder = 999
-    })
+-- ========= MAIN UI =========
+function BronxUI:CreateUI()
+    local gui = mk("ScreenGui", {Name = "BronxUI", ResetOnSpawn=false, IgnoreGuiInset=true})
     gui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
 
-    -- Main window frame
-    local root = mk("Frame", {
-        Parent=gui, 
-        BackgroundColor3=THEME.bg,
-        Size=UDim2.fromOffset(sizeW, sizeH),
-        Position=UDim2.fromScale(0.5, 0.5), 
-        AnchorPoint=Vector2.new(0.5,0.5),
-        Visible = false -- Start hidden
+    -- Main container
+    local mainFrame = mk("Frame", {
+        Parent = gui, 
+        BackgroundColor3 = THEME.bg,
+        Size = UDim2.fromOffset(650, 600),
+        Position = UDim2.fromScale(0.5, 0.5),
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Visible = false
     })
-    round(root, 10); stroke(root, 2, THEME.border, 0.2)
-    autoScale(root)
+    round(mainFrame, 12)
+    stroke(mainFrame, 2, THEME.border, 0.2)
+    autoScale(mainFrame)
 
-    -- Drag functionality (improved for mobile)
-    local dragging, dragInput, dragStart, startPos
-    local function updateInput(input)
-        local delta = input.Position - dragStart
-        root.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    -- Open button (centered top)
+    local openBtn = mk("TextButton", {
+        Parent = gui,
+        BackgroundColor3 = THEME.panel2,
+        TextColor3 = THEME.text,
+        Text = "bronx.lol",
+        Size = UDim2.fromOffset(120, 36),
+        Position = UDim2.fromScale(0.5, 0),
+        AnchorPoint = Vector2.new(0.5, 0),
+        TextSize = 18,
+        Font = Enum.Font.GothamBold
+    })
+    round(openBtn, 6)
+    stroke(openBtn, 1, THEME.border, 0.5)
+
+    -- Close button (top right)
+    local closeBtn = mk("TextButton", {
+        Parent = mainFrame,
+        BackgroundColor3 = THEME.panel2,
+        TextColor3 = THEME.text,
+        Text = "X",
+        Size = UDim2.fromOffset(30, 30),
+        Position = UDim2.new(1, -40, 0, 10),
+        TextSize = 18,
+        Font = Enum.Font.GothamBold
+    })
+    round(closeBtn, 6)
+    stroke(closeBtn, 1, THEME.border, 0.5)
+
+    -- Corner labels
+    local bottomLeftLabel = mk("TextLabel", {
+        Parent = mainFrame,
+        BackgroundTransparency = 1,
+        Text = "Left Label",
+        TextColor3 = THEME.dim,
+        Size = UDim2.fromOffset(150, 20),
+        Position = UDim2.new(0, 10, 1, -25),
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left
+    })
+
+    local bottomRightLabel = mk("TextLabel", {
+        Parent = mainFrame,
+        BackgroundTransparency = 1,
+        Text = "Right Label",
+        TextColor3 = THEME.dim,
+        Size = UDim2.fromOffset(150, 20),
+        Position = UDim2.new(1, -160, 1, -25),
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Right
+    })
+
+    -- Title
+    local title = mk("TextLabel", {
+        Parent = mainFrame,
+        BackgroundTransparency = 1,
+        Text = "bronx.lol",
+        TextColor3 = THEME.accent,
+        Size = UDim2.new(1, 0, 0, 40),
+        Position = UDim2.fromOffset(0, 10),
+        TextSize = 24,
+        Font = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Center
+    })
+
+    -- Tab system
+    local tabContainer = mk("Frame", {
+        Parent = mainFrame,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, -20, 1, -80),
+        Position = UDim2.fromOffset(10, 60)
+    })
+
+    -- Left tabs column
+    local tabButtons = mk("Frame", {
+        Parent = tabContainer,
+        BackgroundColor3 = THEME.panel2,
+        Size = UDim2.fromOffset(120, 1),
+        AnchorPoint = Vector2.new(0, 0.5),
+        Position = UDim2.new(0, 0, 0.5, 0)
+    })
+    round(tabButtons, 8)
+    stroke(tabButtons, 1, THEME.border, 0.4)
+
+    local tabListLayout = mk("UIListLayout", {
+        Parent = tabButtons,
+        Padding = UDim.new(0, 5),
+        SortOrder = Enum.SortOrder.LayoutOrder
+    })
+
+    -- Content area
+    local contentFrame = mk("Frame", {
+        Parent = tabContainer,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, -140, 1, 0),
+        Position = UDim2.fromOffset(130, 0)
+    })
+
+    local contentScroller = mk("ScrollingFrame", {
+        Parent = contentFrame,
+        BackgroundTransparency = 1,
+        Size = UDim2.fromScale(1, 1),
+        CanvasSize = UDim2.fromScale(0, 0),
+        ScrollBarThickness = 6,
+        AutomaticCanvasSize = Enum.AutomaticSize.Y
+    })
+
+    local contentLayout = mk("UIListLayout", {
+        Parent = contentScroller,
+        Padding = UDim.new(0, 12),
+        SortOrder = Enum.SortOrder.LayoutOrder
+    })
+
+    -- Tab sections
+    local tabs = {}
+    local currentTab = nil
+
+    local function createTab(name)
+        local tabBtn = mk("TextButton", {
+            Parent = tabButtons,
+            BackgroundColor3 = THEME.panel,
+            TextColor3 = THEME.text,
+            Text = name,
+            Size = UDim2.new(1, -10, 0, 36),
+            TextSize = 16,
+            Font = Enum.Font.GothamMedium,
+            AutoButtonColor = false
+        })
+        round(tabBtn, 6)
+        stroke(tabBtn, 1, THEME.border, 0.5)
+
+        local tabContent = mk("Frame", {
+            Parent = contentScroller,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 0),
+            AutomaticSize = Enum.AutomaticSize.Y,
+            Visible = false
+        })
+
+        local tabSections = {}
+
+        local function activate()
+            if currentTab then
+                currentTab.content.Visible = false
+                currentTab.button.BackgroundColor3 = THEME.panel
+            end
+            
+            tabContent.Visible = true
+            tabBtn.BackgroundColor3 = THEME.accent
+            currentTab = {content = tabContent, button = tabBtn}
+        end
+
+        tabBtn.MouseButton1Click:Connect(activate)
+
+        local tabObj = {
+            button = tabBtn,
+            content = tabContent,
+            activate = activate,
+            addSection = function(header)
+                local section = mk("Frame", {
+                    Parent = tabContent,
+                    BackgroundTransparency = 1,
+                    Size = UDim2.new(1, 0, 0, 0),
+                    AutomaticSize = Enum.AutomaticSize.Y
+                })
+
+                local sectionHeader = mk("TextLabel", {
+                    Parent = section,
+                    BackgroundTransparency = 1,
+                    Text = header,
+                    TextColor3 = THEME.accent,
+                    Size = UDim2.new(1, 0, 0, 30),
+                    TextSize = 18,
+                    Font = Enum.Font.GothamBold,
+                    TextXAlignment = Enum.TextXAlignment.Left
+                })
+
+                local sectionContent = mk("Frame", {
+                    Parent = section,
+                    BackgroundColor3 = THEME.panel2,
+                    Size = UDim2.new(1, 0, 0, 0),
+                    AutomaticSize = Enum.AutomaticSize.Y
+                })
+                round(sectionContent, 8)
+                stroke(sectionContent, 1, THEME.border, 0.4)
+
+                local sectionLayout = mk("UIListLayout", {
+                    Parent = sectionContent,
+                    Padding = UDim.new(0, 8),
+                    SortOrder = Enum.SortOrder.LayoutOrder
+                })
+
+                local sectionPadding = mk("UIPadding", {
+                    Parent = sectionContent,
+                    PaddingLeft = UDim.new(0, 8),
+                    PaddingRight = UDim.new(0, 8),
+                    PaddingTop = UDim.new(0, 8),
+                    PaddingBottom = UDim.new(0, 8)
+                })
+
+                local sectionObj = {}
+
+                -- Add toggle function
+                function sectionObj:addToggle(text, default, callback)
+                    local toggleFrame = mk("Frame", {
+                        Parent = sectionContent,
+                        BackgroundColor3 = THEME.panel,
+                        Size = UDim2.new(1, 0, 0, 36),
+                        AutomaticSize = Enum.AutomaticSize.None
+                    })
+                    round(toggleFrame, 6)
+                    stroke(toggleFrame, 1, THEME.border, 0.5)
+
+                    local toggleLabel = mk("TextLabel", {
+                        Parent = toggleFrame,
+                        BackgroundTransparency = 1,
+                        Text = text,
+                        TextColor3 = THEME.text,
+                        Size = UDim2.new(0.7, 0, 1, 0),
+                        Position = UDim2.fromOffset(10, 0),
+                        TextSize = 16,
+                        Font = Enum.Font.GothamMedium,
+                        TextXAlignment = Enum.TextXAlignment.Left
+                    })
+
+                    local toggleBtn = mk("TextButton", {
+                        Parent = toggleFrame,
+                        BackgroundColor3 = default and THEME.on or THEME.off,
+                        TextColor3 = THEME.text,
+                        Text = default and "ON" or "OFF",
+                        Size = UDim2.fromOffset(70, 26),
+                        Position = UDim2.new(1, -80, 0.5, -13),
+                        TextSize = 16,
+                        Font = Enum.Font.GothamBold,
+                        AutoButtonColor = false
+                    })
+                    round(toggleBtn, 6)
+                    stroke(toggleBtn, 1, THEME.border, 0.5)
+
+                    local state = default or false
+
+                    toggleBtn.MouseButton1Click:Connect(function()
+                        state = not state
+                        toggleBtn.BackgroundColor3 = state and THEME.on or THEME.off
+                        toggleBtn.Text = state and "ON" or "OFF"
+                        if callback then callback(state) end
+                    end)
+
+                    return {
+                        set = function(value)
+                            state = value
+                            toggleBtn.BackgroundColor3 = state and THEME.on or THEME.off
+                            toggleBtn.Text = state and "ON" or "OFF"
+                            if callback then callback(state) end
+                        end,
+                        get = function() return state end
+                    }
+                end
+
+                -- Add button function
+                function sectionObj:addButton(text, callback)
+                    local btnFrame = mk("TextButton", {
+                        Parent = sectionContent,
+                        BackgroundColor3 = THEME.panel,
+                        TextColor3 = THEME.text,
+                        Text = text,
+                        Size = UDim2.new(1, 0, 0, 36),
+                        TextSize = 16,
+                        Font = Enum.Font.GothamMedium,
+                        AutoButtonColor = false
+                    })
+                    round(btnFrame, 6)
+                    stroke(btnFrame, 1, THEME.border, 0.5)
+
+                    btnFrame.MouseButton1Click:Connect(function()
+                        if callback then callback() end
+                    end)
+
+                    return btnFrame
+                end
+
+                -- Add label function
+                function sectionObj:addLabel(text)
+                    local label = mk("TextLabel", {
+                        Parent = sectionContent,
+                        BackgroundTransparency = 1,
+                        Text = text,
+                        TextColor3 = THEME.text,
+                        Size = UDim2.new(1, 0, 0, 20),
+                        TextSize = 14,
+                        Font = Enum.Font.Gotham,
+                        TextXAlignment = Enum.TextXAlignment.Left
+                    })
+                    return label
+                end
+
+                table.insert(tabSections, sectionObj)
+                return sectionObj
+            end
+        }
+
+        table.insert(tabs, tabObj)
+        return tabObj
     end
-    root.InputBegan:Connect(function(input)
-        if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+
+    -- Create all tabs from your structure
+    local gameTab = createTab("Game")
+    local worldTab = createTab("World")
+    local farmingTab = createTab("Farming")
+    local manualFarmsTab = createTab("Manual Farms")
+    local farmingSettingsTab = createTab("Farming Settings")
+    local miscTab = createTab("Misc")
+    local vulnerabilityTab = createTab("Vulnerability")
+    local killAuraTab = createTab("Kill Aura")
+
+    -- Game tab sections
+    do
+        local mainSection = gameTab.addSection("Main")
+        mainSection:addToggle("Combat", false)
+        mainSection:addToggle("Silent Aim", false)
+        mainSection:addToggle("Aimlock", false)
+        
+        local modSection = gameTab.addSection("Modifications")
+        -- Add modification options here
+    end
+
+    -- World tab sections
+    do
+        local visualsSection = worldTab.addSection("Visuals")
+        -- Add visuals options here
+        
+        local settingsSection = worldTab.addSection("Settings")
+        -- Add settings options here
+        
+        local configsSection = worldTab.addSection("Configs")
+        -- Add configs options here
+    end
+
+    -- Farming tab sections
+    do
+        farmingTab.addSection("Auto Farm"):addToggle("Construction", false)
+        farmingTab.addSection("Auto Farm"):addToggle("Bank Robbery", false)
+        farmingTab.addSection("Auto Farm"):addToggle("House Robbery", false)
+        farmingTab.addSection("Auto Farm"):addToggle("Studio Robbery", false)
+        farmingTab.addSection("Auto Farm"):addToggle("Dumpsters", false)
+    end
+
+    -- Manual Farms tab sections
+    do
+        manualFarmsTab.addSection("Auto Collect"):addToggle("Dropped Cash", false)
+        manualFarmsTab.addSection("Auto Collect"):addToggle("Dropped Bags", false)
+        manualFarmsTab.addSection(""):addButton("Clean All Filthy Money")
+    end
+
+    -- Farming Settings tab sections
+    do
+        farmingSettingsTab.addSection(""):addToggle("AFK Safety Teleport", false)
+        farmingSettingsTab.addSection(""):addToggle("Auto Sell Trash", false)
+    end
+
+    -- Misc tab sections
+    do
+        local dupingSection = miscTab.addSection("Duping Section")
+        dupingSection:addButton("Duplicate Current Item")
+        dupingSection:addLabel("This might bug if you have more than 1 of the item you're duping!")
+    end
+
+    -- Vulnerability tab sections
+    do
+        local moneySection = vulnerabilityTab.addSection("Generate Max Illegal Money")
+        moneySection:addLabel("Money Generator takes around 3 minutes, and can take longer")
+        moneySection:addLabel("if some items are not in stock. You will need around 5K to do this.")
+        moneySection:addButton("Generate Money")
+    end
+
+    -- Kill Aura tab sections
+    do
+        local killAuraSection = killAuraTab.addSection("Kill Aura Settings")
+        killAuraSection:addToggle("Enabled - Hold Gun", false)
+        killAuraSection:addLabel("Kill Aura Range")
+        -- Could add a slider here for range
+    end
+
+    -- UI toggle functionality
+    openBtn.MouseButton1Click:Connect(function()
+        mainFrame.Visible = true
+        openBtn.Visible = false
+        if #tabs > 0 then
+            tabs[1].activate()
+        end
+    end)
+
+    closeBtn.MouseButton1Click:Connect(function()
+        mainFrame.Visible = false
+        openBtn.Visible = true
+    end)
+
+    -- Make draggable
+    local dragging = false
+    local dragInput, dragStart, startPos
+
+    mainFrame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
             dragStart = input.Position
-            startPos = root.Position
+            startPos = mainFrame.Position
+            
             input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then
                     dragging = false
@@ -94,394 +480,32 @@ function MiniUI:CreateWindow(opts)
             end)
         end
     end)
-    root.InputChanged:Connect(function(input)
+
+    mainFrame.InputChanged:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
             dragInput = input
         end
     end)
+
     game:GetService("UserInputService").InputChanged:Connect(function(input)
         if input == dragInput and dragging then
-            updateInput(input)
+            local delta = input.Position - dragStart
+            mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
         end
     end)
 
-    -- Top bar with title and close button
-    local top = mk("Frame", {
-        Parent=root, 
-        BackgroundTransparency=1, 
-        Size=UDim2.new(1,-16,0,36), 
-        Position=UDim2.fromOffset(8,6)
-    })
-    
-    -- Close button (top right)
-    local closeBtn = mk("TextButton", {
-        Parent=top,
-        BackgroundTransparency=1,
-        Size=UDim2.fromOffset(24,24),
-        Position=UDim2.new(1,-24,0,6),
-        TextColor3=THEME.text,
-        Text="X",
-        TextSize=18,
-        Font=Enum.Font.GothamBold
-    })
-    closeBtn.MouseButton1Click:Connect(function()
-        root.Visible = false
-        if gui:FindFirstChild("OpenButton") then
-            gui.OpenButton.Visible = true
+    -- Public methods
+    local public = {
+        _gui = gui,
+        setLeftLabel = function(text) bottomLeftLabel.Text = text end,
+        setRightLabel = function(text) bottomRightLabel.Text = text end,
+        toggle = function() 
+            mainFrame.Visible = not mainFrame.Visible 
+            openBtn.Visible = not mainFrame.Visible
         end
-    end)
-
-    -- Title label
-    local titleLbl = text(top, title, 18, true)
-    titleLbl.Size = UDim2.new(1,-60,1,0)
-    titleLbl.Position = UDim2.fromOffset(30,0)
-    titleLbl.TextXAlignment = Enum.TextXAlignment.Left
-
-    -- Tabs row
-    local tabBar = mk("Frame", {
-        Parent=root, 
-        BackgroundTransparency=1, 
-        Size=UDim2.new(1,-16,0,28), 
-        Position=UDim2.fromOffset(8,44)
-    })
-    local tabLayout = mk("UIListLayout", {
-        Parent=tabBar, 
-        FillDirection=Enum.FillDirection.Horizontal, 
-        Padding=UDim.new(0,14), 
-        VerticalAlignment=Enum.VerticalAlignment.Center
-    })
-
-    -- Content host
-    local content = mk("Frame", {
-        Parent=root, 
-        BackgroundTransparency=1, 
-        Size=UDim2.new(1,-16,1,-90), 
-        Position=UDim2.fromOffset(8,76)
-    })
-
-    -- Corner labels (bottom left and right)
-    local bottomLeftLabel = text(root, opts.leftLabel or "", 14, false, THEME.dim)
-    bottomLeftLabel.Size = UDim2.fromOffset(200,20)
-    bottomLeftLabel.Position = UDim2.fromOffset(12, sizeH-24)
-    bottomLeftLabel.TextXAlignment = Enum.TextXAlignment.Left
-    
-    local bottomRightLabel = text(root, opts.rightLabel or "", 14, false, THEME.dim)
-    bottomRightLabel.Size = UDim2.fromOffset(200,20)
-    bottomRightLabel.Position = UDim2.new(1,-212,1,-24)
-    bottomRightLabel.TextXAlignment = Enum.TextXAlignment.Right
-
-    -- Open button (shown when UI is closed)
-    local openBtn = mk("TextButton", {
-        Parent=gui,
-        Name = "OpenButton",
-        BackgroundColor3=THEME.panel2,
-        Size=UDim2.fromOffset(80,36),
-        Position=UDim2.fromScale(0.5, 0.02),
-        AnchorPoint=Vector2.new(0.5,0),
-        TextColor3=THEME.text,
-        Text="Open",
-        TextSize=16,
-        AutoButtonColor=false
-    })
-    round(openBtn, 6)
-    stroke(openBtn, 1, THEME.border, 0.5)
-    
-    openBtn.MouseButton1Click:Connect(function()
-        root.Visible = true
-        openBtn.Visible = false
-    end)
-
-    -- Public window object
-    local win = { 
-        _gui = gui, 
-        _root = root, 
-        _tabBar = tabBar, 
-        _content = content, 
-        _tabs = {}, 
-        _active = nil,
-        _openBtn = openBtn,
-        _closeBtn = closeBtn,
-        _leftLabel = bottomLeftLabel,
-        _rightLabel = bottomRightLabel
     }
 
-    function win:SetLeftLabel(text)
-        self._leftLabel.Text = text or ""
-    end
-
-    function win:SetRightLabel(text)
-        self._rightLabel.Text = text or ""
-    end
-
-    function win:Toggle()
-        root.Visible = not root.Visible
-        openBtn.Visible = not root.Visible
-    end
-
-    function win:AddTab(name)
-        local btn = mk("TextButton", {
-            Parent=tabBar, 
-            AutoButtonColor=false, 
-            BackgroundTransparency=1, 
-            Text=name,
-            FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Bold),
-            TextColor3 = THEME.text, 
-            TextSize=18
-        })
-        btn.Size = UDim2.fromOffset(#name*9+14, 28)
-
-        local page = mk("Frame", {
-            Parent=content, 
-            BackgroundTransparency=1, 
-            Size=UDim2.new(1,0,1,0), 
-            Visible=false
-        })
-
-        local function activate()
-            for _,t in pairs(win._tabs) do 
-                t.page.Visible=false; 
-                t.btn.TextColor3=THEME.text 
-            end
-            page.Visible=true; 
-            btn.TextColor3=THEME.accent; 
-            win._active = page
-        end
-        btn.MouseButton1Click:Connect(activate)
-
-        local tabObj = {btn=btn, page=page}
-        table.insert(win._tabs, tabObj)
-        if #win._tabs==1 then activate() end
-
-        -- Sections container (scrolling)
-        local scroller = mk("ScrollingFrame", {
-            Parent = page, 
-            BackgroundTransparency=1, 
-            Size=UDim2.fromScale(1,1),
-            CanvasSize=UDim2.new(0,0,0,0), 
-            ScrollBarThickness=6, 
-            AutomaticCanvasSize=Enum.AutomaticSize.Y
-        })
-        local list = mk("UIListLayout", {
-            Parent=scroller, 
-            Padding=UDim.new(0,10)
-        })
-        list.SortOrder = Enum.SortOrder.LayoutOrder
-
-        function tabObj:AddSection(headerText)
-            local holder = mk("Frame", {
-                Parent=scroller, 
-                BackgroundTransparency=1, 
-                Size=UDim2.new(1,0,0,0), 
-                AutomaticSize=Enum.AutomaticSize.Y
-            })
-            local header = text(holder, headerText, 18, true, THEME.accent, true)
-            header.Size = UDim2.new(1,0,0,26)
-
-            local panel = mk("Frame", {
-                Parent=holder, 
-                BackgroundColor3=THEME.panel2, 
-                Size=UDim2.new(1,0,0,0), 
-                AutomaticSize=Enum.AutomaticSize.Y
-            })
-            round(panel, 8); stroke(panel, 1, THEME.border, 0.45)
-
-            local innerScroll = mk("ScrollingFrame", {
-                Parent=panel, 
-                BackgroundColor3=THEME.panel, 
-                BorderSizePixel=0,
-                Position=UDim2.fromOffset(8,8), 
-                Size=UDim2.new(1,-16,0,0), 
-                AutomaticSize=Enum.AutomaticSize.Y,
-                CanvasSize=UDim2.fromScale(0,0), 
-                ScrollBarThickness=6
-            })
-            round(innerScroll, 6); stroke(innerScroll, 1, THEME.border, 0.6)
-
-            local lay = mk("UIListLayout", {
-                Parent=innerScroll, 
-                Padding=UDim.new(0,8)
-            })
-            lay.SortOrder = Enum.SortOrder.LayoutOrder
-
-            local sec = {}
-
-            -- item builders -------------
-            local function rowBase(h)
-                local r = mk("Frame", {
-                    Parent=innerScroll, 
-                    BackgroundColor3=THEME.panel, 
-                    Size=UDim2.new(1,-16,0,h or 36)
-                })
-                r.AutomaticSize = Enum.AutomaticSize.None; round(r,6); stroke(r,1,THEME.border,0.55)
-                return r
-            end
-
-            function sec:AddButton(labelText, callback)
-                local r = rowBase()
-                local lbl = text(r, labelText, 16, false); lbl.Size=UDim2.new(1,-110,1,0); lbl.Position=UDim2.fromOffset(12,0)
-                local btn = mk("TextButton", {
-                    Parent=r, 
-                    BackgroundColor3=THEME.panel2, 
-                    AutoButtonColor=false, 
-                    Text="Click", 
-                    TextColor3=THEME.text, 
-                    TextSize=16, 
-                    Size=UDim2.fromOffset(64,26), 
-                    Position=UDim2.new(1,-76,0.5,-13)
-                })
-                round(btn,6); stroke(btn,1,THEME.border,0.5)
-                btn.MouseButton1Click:Connect(function() if callback then callback() end end)
-                return btn
-            end
-
-            function sec:AddToggle(labelText, default, callback)
-                local r = rowBase()
-                local lbl = text(r, labelText, 16, false); lbl.Size=UDim2.new(1,-110,1,0); lbl.Position=UDim2.fromOffset(12,0)
-                local btn = mk("TextButton", {
-                    Parent=r, 
-                    BackgroundColor3= default and THEME.on or THEME.off, 
-                    AutoButtonColor=false, 
-                    Text= default and "On" or "Off", 
-                    TextColor3=THEME.text, 
-                    TextSize=16, 
-                    Size=UDim2.fromOffset(64,26), 
-                    Position=UDim2.new(1,-76,0.5,-13)
-                })
-                round(btn,6); stroke(btn,1,THEME.border,0.5)
-                local state = default and true or false
-                btn.MouseButton1Click:Connect(function()
-                    state = not state
-                    btn.BackgroundColor3 = state and THEME.on or THEME.off
-                    btn.Text = state and "On" or "Off"
-                    if callback then callback(state) end
-                end)
-                return btn
-            end
-
-            function sec:AddNumberBox(labelText, default, callback)
-                local r = rowBase()
-                local lbl = text(r, labelText, 16, false); lbl.Size=UDim2.new(1,-160,1,0); lbl.Position=UDim2.fromOffset(12,0)
-                local box = mk("TextBox", {
-                    Parent=r, 
-                    BackgroundColor3=THEME.panel2, 
-                    Text=tostring(default or 0), 
-                    TextSize=16, 
-                    TextColor3=THEME.text, 
-                    ClearTextOnFocus=false, 
-                    Size=UDim2.fromOffset(80,26), 
-                    Position=UDim2.new(1,-92,0.5,-13)
-                })
-                round(box,6); stroke(box,1,THEME.border,0.5)
-                box.FocusLost:Connect(function()
-                    local n = tonumber(box.Text) or 0; box.Text = tostring(n); if callback then callback(n) end
-                end)
-                return box
-            end
-
-            function sec:AddSlider(labelText, min, max, default, callback)
-                min = min or 0; max = max or 100; default = math.clamp(default or min, min, max)
-                local r = rowBase(44)
-                local lbl = text(r, labelText.." ("..tostring(default)..")", 16, false); lbl.Size=UDim2.new(1,-160,0,20); lbl.Position=UDim2.fromOffset(12,4)
-
-                local bar = mk("Frame", {
-                    Parent=r, 
-                    BackgroundColor3=THEME.panel2, 
-                    Size=UDim2.new(1,-32,0,8), 
-                    Position=UDim2.fromOffset(12,28)
-                })
-                round(bar,4); stroke(bar,1,THEME.border,0.6)
-                local fill = mk("Frame", {
-                    Parent=bar, 
-                    BackgroundColor3=THEME.accent, 
-                    Size=UDim2.new((default-min)/(max-min),0,1,0)
-                })
-                round(fill,4)
-                local dragging=false
-                local function setFromX(x)
-                    local rel = math.clamp((x - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
-                    local val = math.floor(min + rel*(max-min) + 0.5)
-                    fill.Size = UDim2.new((val-min)/(max-min),0,1,0)
-                    lbl.Text = labelText.." ("..tostring(val)..")"
-                    if callback then callback(val) end
-                end
-                bar.InputBegan:Connect(function(i)
-                    if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=true; setFromX(i.Position.X) end
-                end)
-                bar.InputEnded:Connect(function(i) dragging=false end)
-                game:GetService("UserInputService").InputChanged:Connect(function(i)
-                    if dragging and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then setFromX(i.Position.X) end
-                end)
-                return {Set=function(v) setFromX(bar.AbsolutePosition.X + (math.clamp(v,min,max)-min)/(max-min)*bar.AbsoluteSize.X) end}
-            end
-
-            function sec:AddDropdown(labelText, options, defaultIndex, callback)
-                options = options or {}
-                local r = rowBase(40)
-                local lbl = text(r, labelText, 16, false); lbl.Size=UDim2.new(1,-160,1,0); lbl.Position=UDim2.fromOffset(12,0)
-
-                local current = options[defaultIndex or 1] or ""
-                local dd = mk("TextButton", {
-                    Parent=r, 
-                    BackgroundColor3=THEME.panel2, 
-                    AutoButtonColor=false, 
-                    Text=current, 
-                    TextColor3=THEME.text, 
-                    TextSize=16, 
-                    Size=UDim2.fromOffset(140,26), 
-                    Position=UDim2.new(1,-156,0.5,-13)
-                })
-                round(dd,6); stroke(dd,1,THEME.border,0.5)
-
-                local listOpen = mk("Frame", {
-                    Parent=r, 
-                    BackgroundColor3=THEME.panel2, 
-                    Visible=false, 
-                    Position=UDim2.new(1,-156,0,34), 
-                    Size=UDim2.fromOffset(140,0), 
-                    AutomaticSize=Enum.AutomaticSize.Y
-                })
-                round(listOpen,8); stroke(listOpen,1,THEME.border,0.5)
-                local s = mk("ScrollingFrame", {
-                    Parent=listOpen, 
-                    BackgroundTransparency=1, 
-                    CanvasSize=UDim2.fromScale(0,0), 
-                    AutomaticCanvasSize=Enum.AutomaticSize.Y, 
-                    Size=UDim2.new(1,0,1,0), 
-                    ScrollBarThickness=6
-                })
-                local l = mk("UIListLayout", {
-                    Parent=s, 
-                    Padding=UDim.new(0,4)
-                })
-
-                local function setChoice(v)
-                    dd.Text = v; if callback then callback(v) end
-                end
-                for _,opt in ipairs(options) do
-                    local b = mk("TextButton", {
-                        Parent=s, 
-                        AutoButtonColor=true, 
-                        BackgroundColor3=THEME.panel, 
-                        Text=opt, 
-                        TextColor3=THEME.text, 
-                        TextSize=16, 
-                        Size=UDim2.new(1,-8,0,28)
-                    })
-                    round(b,6); stroke(b,1,THEME.border,0.6)
-                    b.MouseButton1Click:Connect(function() setChoice(opt); listOpen.Visible=false end)
-                end
-                dd.MouseButton1Click:Connect(function() listOpen.Visible = not listOpen.Visible end)
-
-                return {Set=setChoice, Open=function(x) listOpen.Visible=true end, Close=function() listOpen.Visible=false end}
-            end
-
-            return sec
-        end
-
-        return tabObj
-    end
-
-    return win
+    return public
 end
 
-return MiniUI
+return BronxUI
